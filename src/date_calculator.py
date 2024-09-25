@@ -78,7 +78,7 @@ class Calculator:
             )
             self._next_hour = self._intervals.hours[0]
             self._next_minute = self._intervals.minutes[0]
-        elif not self._is_hour:
+        else:
             next_hour = self._get_next_greater(self._intervals.hours, self._actual_hour)
             if next_hour == self._intervals.hours[0]:
                 self._calculate_next_day(
@@ -89,11 +89,11 @@ class Calculator:
                 self._next_hour = self._intervals.hours[0]
                 self._next_minute = self._intervals.minutes[0]
             else:
+                self._next_minute = self._intervals.minutes[0]
                 self._next_hour = next_hour
                 self._next_day = self._actual_day
                 self._next_month = self._actual_month
                 self._next_year = self._actual_year
-
 
     def _calculate_next_day(self, actual_year, actual_month, actual_day):
         next_month_day = self._get_next_greater(self._intervals.monthdays, actual_day)
