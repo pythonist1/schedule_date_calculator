@@ -2,6 +2,10 @@ import attr
 from datetime import datetime
 
 
+class LeapYearException(Exception):
+    pass
+
+
 @attr.s(auto_attribs=True, frozen=True)
 class ScheduleIntervals:
     minutes: tuple
@@ -51,23 +55,25 @@ class Calculator:
     def _calculate_next_date_params(self):
         if not self._is_month:
             self._next_month = self._get_next_greater(self._intervals.months, self._actual_month)
-            if self._next_month == self._intervals.months[0]:
-                self._next_year = self._actual_year + 1
-            else:
-                self._next_year = self._actual_year
-
+            self._next_year = self._get_year(self._actual_year, self._next_month, leap=False)
+            try:
+                next_day = self._get_next_day(self._next_year, self._next_month, next_first=True)
+            except LeapYearException:
+                self._next_year = self._get_year(self._next_year, self._next_month, leap=True)
+                self._next_month = self._intervals.months[0]
+                next_day = self._intervals.monthdays[0]
             if not self._check_week_day(
                 self._next_year,
                 self._next_month,
-                self._intervals.monthdays[0]
+                next_day
             ):
                 self._calculate_next_day(
-                    self._intervals.monthdays[0],
+                    self._next_year,
                     self._next_month,
-                    self._next_year
+                    self._intervals.monthdays[0]
                 )
             else:
-                self._next_day = self._intervals.monthdays[0]
+                self._next_day = next_day
             self._next_hour = self._intervals.hours[0]
             self._next_minute = self._intervals.minutes[0]
         elif not self._is_day or not self._is_week_day:
@@ -96,9 +102,16 @@ class Calculator:
                 self._next_year = self._actual_year
 
     def _calculate_next_day(self, actual_year, actual_month, actual_day):
-        next_month_day = self._get_next_greater(self._intervals.monthdays, actual_day)
+        leap_year = False
+        try:
+            next_month_day = self._get_next_day(actual_year, actual_month, actual_day)
+        except LeapYearException:
+            leap_year = True
+            actual_year = self._get_year(actual_year, actual_month, leap=True)
+            actual_month = self._intervals.months[0]
+            next_month_day = self._intervals.monthdays[0]
         if next_month_day != self._intervals.monthdays[0]:
-            if self._check_week_day(self._actual_year, self._actual_month, next_month_day):
+            if self._check_week_day(actual_year, self._actual_month, next_month_day):
                 self._next_day = next_month_day
                 self._next_month = actual_month
                 self._next_year = actual_year
@@ -106,15 +119,21 @@ class Calculator:
                 self._calculate_next_day(actual_year, actual_month, next_month_day)
         else:
             self._next_month = self._get_next_greater(self._intervals.months, self._actual_month)
-            if self._next_month == self._intervals.months[0]:
-                self._next_year = actual_year + 1
-            else:
-                self._next_year = actual_year
-            if self._check_week_day(self._next_year, self._next_month, next_month_day):
-                self._next_day = next_month_day
+            self._next_year = self._get_year(actual_year, actual_month, leap=leap_year)
+            if not leap_year:
+                if self._check_week_day(self._next_year, self._next_month, next_month_day):
+                    self._next_day = next_month_day
             else:
                 self._calculate_next_day(actual_year, actual_month, next_month_day)
 
+    def _get_year(self, actual_year, actual_month, leap):
+        if not leap:
+            if actual_month == self._intervals.months[0]:
+                return actual_year + 1
+            else:
+                return actual_year
+        else:
+            return self._get_next_leap_year_with_consistence_weak_day(actual_year)
 
     def _check_week_day(self, actual_year, actual_month, actual_day):
         date_object = datetime(actual_year, actual_month, actual_day)
@@ -126,6 +145,33 @@ class Calculator:
             if number > element:
                 return number
         return array[0]
+
+    def _get_next_day(self, actual_year, actual_month, actual_day = None, next_first = False):
+        next_day = self._intervals.monthdays[0]
+        if not next_first:
+            next_day = self._get_next_greater(self._intervals.monthdays, actual_day)
+        if next_day == 29 and actual_month == 2:
+            if not self._check_leap_februaury(actual_year) and len(self._intervals.monthdays) > 1:
+                next_day = self._get_next_greater(self._intervals.monthdays, next_day)
+            else:
+                raise LeapYearException()
+        return next_day
+
+    def _check_leap_februaury(self, actual_year):
+        if (actual_year % 4 == 0 and actual_year % 100 != 0) or (actual_year % 400 == 0):
+            return True
+        return False
+
+    def _get_next_leap_year_with_consistence_weak_day(self, actual_year):
+        while True:
+            if (actual_year % 4 == 0 and actual_year % 100 != 0) or (actual_year % 400 == 0):
+                if self._check_week_day(
+                    actual_year,
+                    self._intervals.months[0],
+                    self._intervals.monthdays[0]
+                ):
+                    return actual_year
+            actual_year += 1
 
     def _parse_actual_date(self, enter_date: str):
         date_object = datetime.strptime(enter_date, "%d.%m.%Y %H:%M")
